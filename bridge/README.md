@@ -6,6 +6,14 @@ GOG executable with SHA-256
 `9e32c95075421faa26fdbeabb97e70f89f398908ee6eecfb9bf679107e43420f`.
 Other versions are unsupported.
 
+## AI-assisted playthrough
+
+GPT-6.1 Terra Fast was used to solve the game's puzzles through this bridge,
+with a person selecting and opening each level. The bridge does not navigate
+through the whole game autonomously. Puzzle solutions were generally checked
+against all 100 tests; one earlier battle result (PB019) was not captured, so
+its outcome was not independently verified by the bridge.
+
 **This fork changes Echopunks startup:** the original accessibility module is
 not loaded, even on ordinary launches. The bridge only starts when explicitly
 enabled by the launcher. It uses the game's normal save, and API operations can
