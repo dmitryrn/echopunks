@@ -86,9 +86,19 @@ namespace Echopunks.Dev
             string path = requestLine.Length > 1 ? requestLine[1] : "/";
 
             int contentLength = 0;
+            string token = null;
             foreach (string line in lines)
+            {
                 if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
                     int.TryParse(line.Substring("Content-Length:".Length).Trim(), out contentLength);
+                if (line.StartsWith("X-Exa-Token:", StringComparison.OrdinalIgnoreCase))
+                    token = line.Substring("X-Exa-Token:".Length).Trim();
+            }
+            string expected = Environment.GetEnvironmentVariable("EXA_BRIDGE_TOKEN");
+            if (string.IsNullOrEmpty(expected) || expected.Length < 32 || token != expected)
+            { Write(stream, 403, "{\"ok\":false,\"error\":\"Unauthorized\"}"); return; }
+            if (contentLength < 0 || contentLength > 65536)
+            { Write(stream, 400, "{\"ok\":false,\"error\":\"Invalid content length\"}"); return; }
 
             int bodyStart = headerEnd + 4;
             while (data.Count - bodyStart < contentLength)
@@ -118,7 +128,7 @@ namespace Echopunks.Dev
             byte[] bodyBytes = Encoding.UTF8.GetBytes(body);
             string reason = status == 200 ? "OK" : "ERROR";
             string head = "HTTP/1.1 " + status + " " + reason + "\r\n"
-                + "Content-Type: text/plain; charset=utf-8\r\n"
+                + "Content-Type: application/json; charset=utf-8\r\n"
                 + "Content-Length: " + bodyBytes.Length + "\r\n"
                 + "Connection: close\r\n\r\n";
             byte[] headBytes = Encoding.ASCII.GetBytes(head);

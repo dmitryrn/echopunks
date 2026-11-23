@@ -54,6 +54,8 @@ namespace Echopunks.Dev
             public Func<string> Work;
             public string Result = "";
             public readonly ManualResetEventSlim Done = new ManualResetEventSlim(false);
+            public bool Cancelled;
+            public bool Started;
         }
 
         private readonly SpeechLog _speech = new SpeechLog();
@@ -66,6 +68,12 @@ namespace Echopunks.Dev
         {
             string how;
             if (!DevEnabled(out how)) return;
+            var token = Environment.GetEnvironmentVariable("EXA_BRIDGE_TOKEN");
+            if (string.IsNullOrEmpty(token) || token.Length < 32)
+            {
+                Log.Warning("Dev server disabled: EXA_BRIDGE_TOKEN must contain at least 32 characters.");
+                return;
+            }
 
             int port = DefaultPort;
             string p = Environment.GetEnvironmentVariable(PortEnv);
@@ -98,10 +106,16 @@ namespace Echopunks.Dev
             Job job;
             while (_jobs.TryDequeue(out job))
             {
+                lock (job)
+                {
+                    if (job.Cancelled) { job.Done.Set(); continue; }
+                    job.Started = true;
+                }
                 try { job.Result = job.Work() ?? ""; }
-                catch (Exception e) { job.Result = "[host error] " + e + "\n"; }
+                catch (Exception) { job.Result = "{\"ok\":false,\"error\":\"Main thread error\"}"; }
                 job.Done.Set();
             }
+            GogState.Tick();
         }
 
         private string OnMainThread(Func<string> work, int timeoutSeconds = 30)
@@ -109,7 +123,17 @@ namespace Echopunks.Dev
             var job = new Job { Work = work };
             _jobs.Enqueue(job);
             if (!job.Done.Wait(TimeSpan.FromSeconds(timeoutSeconds)))
-                return "[timeout] main thread did not run the job within " + timeoutSeconds + "s (frozen / not ticking?)\n";
+            {
+                lock (job)
+                {
+                    if (!job.Started)
+                    {
+                        job.Cancelled = true;
+                        return "{\"ok\":false,\"error\":\"Timed out before execution; request cancelled\"}";
+                    }
+                    return "{\"ok\":false,\"error\":\"Timed out after execution started; outcome unknown\"}";
+                }
+            }
             return job.Result;
         }
 
@@ -121,8 +145,47 @@ namespace Echopunks.Dev
             int q = path.IndexOf('?');
             if (q >= 0) { route = path.Substring(0, q); query = path.Substring(q + 1); }
 
-            if (route == "/health" || route == "/") return "ok\n";
+            if (route == "/health" && method == "GET")
+                return "{\"ok\":true,\"game_initialized\":" + (Bootstrap.BridgeGameInitialized ? "true" : "false") + "}";
 
+            if (route == "/gog/desktop" && method == "POST")
+                return OnMainThread(GogState.OpenDesktop);
+            if (route == "/gog/state" && method == "GET")
+                return OnMainThread(GogState.Read);
+            if (route == "/gog/goal-log" && method == "POST")
+                return OnMainThread(GogGoalCapture.Start);
+            if (route == "/gog/goal-log" && method == "GET")
+                return OnMainThread(GogGoalCapture.Status);
+            if (route == "/gog/tasks" && method == "GET")
+                return OnMainThread(GogState.ListTasks);
+            if (route == "/gog/open" && method == "POST")
+                return OnMainThread(() => GogState.OpenTask(body));
+            if (route == "/gog/code" && method == "POST")
+                return OnMainThread(() => GogState.SetCode(body));
+            if (route == "/gog/programs" && method == "POST")
+                return OnMainThread(() => GogState.SetPrograms(body));
+            if (route == "/gog/exas" && method == "GET")
+                return OnMainThread(GogState.ListExas);
+            if (route == "/gog/exas" && (method == "POST" || method == "PUT" || method == "DELETE"))
+                return OnMainThread(() => GogState.EditExas(method, body));
+            if (route == "/gog/step" && method == "POST")
+                return OnMainThread(GogState.Step);
+            if (route == "/gog/run" && method == "POST")
+                return OnMainThread(() => GogState.RunAll(body));
+            if (route == "/gog/run/status" && method == "GET")
+                return OnMainThread(GogState.RunStatus);
+            if (route == "/gog/battle-results" && method == "GET")
+                return OnMainThread(GogState.BattleResults);
+            if (route == "/gog/pause" && method == "POST")
+                return OnMainThread(GogState.PauseRun);
+            if (route == "/gog/reset" && method == "POST")
+                return OnMainThread(GogState.Reset);
+            if (route == "/gog/continue" && method == "POST")
+                return OnMainThread(GogState.ContinueEditing);
+
+            return "{\"ok\":false,\"error\":\"Unknown route\"}";
+
+#if false
             if (route == "/say" && method == "POST")
             {
                 string text = (body ?? "").Trim();
@@ -145,6 +208,9 @@ namespace Echopunks.Dev
             if (route == "/screen" && method == "GET")
                 return OnMainThread(DumpScreens);
 
+            if (route == "/gog/state" && method == "GET")
+                return OnMainThread(GogState.Read);
+
             if (route == "/reload" && method == "POST")
                 // Main thread: module Load/Dispose touch Harmony and game state mid-frame otherwise.
                 return OnMainThread(Bootstrap.ReloadModule);
@@ -162,6 +228,7 @@ namespace Echopunks.Dev
             }
 
             return "[404] " + method + " " + route + "\n";
+#endif
         }
 
         private static string DumpScreens()

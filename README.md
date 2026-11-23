@@ -1,5 +1,11 @@
 # Echopunks
 
+> **Fork note:** This fork contains an experimental, opt-in EXAPUNKS game API
+> bridge. Its current bootstrap disables the original accessibility module,
+> including on normal launches. See [bridge documentation](bridge/README.md)
+> before building or installing it. For the accessibility mod, use the
+> [upstream project](https://github.com/amerikrainian/echopunks).
+
 Screen-reader accessibility mod for [EXAPUNKS](https://store.steampowered.com/app/716490/EXAPUNKS/).
 
 Docs are [here](https://amerikrainian.com/echopunks/). The release zip also ships them in the

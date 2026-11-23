@@ -30,6 +30,7 @@ namespace Echopunks
         private static Modularity.ModHost _modHost;
         private static Modularity.ModuleLoader _moduleLoader;
         private static bool _tickErrorLogged;
+        internal static volatile bool BridgeGameInitialized;
 
         public override void InitializeNewDomain(AppDomainSetup appDomainInfo)
         {
@@ -37,6 +38,9 @@ namespace Echopunks
             // Secondary AppDomains (should the game ever create one) get their own manager instance;
             // only the default domain hosts the mod.
             if (!AppDomain.CurrentDomain.IsDefaultAppDomain()) return;
+            // This fork is an opt-in bridge, not a general Echopunks deployment.
+            // A normal game launch must not load its module, start speech or touch Steam files.
+            if (Environment.GetEnvironmentVariable("EXA_BRIDGE_ONLY") != "1") return;
             try { Boot(); }
             catch (Exception ex)
             {
@@ -59,7 +63,8 @@ namespace Echopunks
             try { Directory.SetCurrentDirectory(gameDir); }
             catch (Exception ex) { Log.Error("Failed to set working directory to " + gameDir, ex); }
 
-            EnsureSteamAppId(gameDir);
+            bool bridgeOnly = Environment.GetEnvironmentVariable("EXA_BRIDGE_ONLY") == "1";
+            if (!bridgeOnly) EnsureSteamAppId(gameDir);
 
             // The game assembly is this very process's exe. GetEntryAssembly() can still be null this
             // early in CLR startup; LoadFrom on the process image path yields the same assembly
@@ -72,7 +77,7 @@ namespace Echopunks
             // Speech first, so failures further down can still be announced. The localized greeting
             // itself comes from the module (localization is module-side); the host speaks only
             // emergency strings — see the CLAUDE.md localization rule's host exemption.
-            if (!Speech.Tts.Init())
+            if (!bridgeOnly && !Speech.Tts.Init())
                 Log.Warning("Speech unavailable — continuing so the game still launches.");
 
             // The old loader exe stopped speech in a finally around the game's entry point; as a guest
@@ -90,7 +95,7 @@ namespace Echopunks
             AppDomain.CurrentDomain.AssemblyResolve += ResolveLoadedByName;
             _modHost = new Modularity.ModHost();
             _moduleLoader = new Modularity.ModuleLoader(Path.Combine(gameDir, "Echopunks.Module.dll"), _modHost);
-            if (!_moduleLoader.Reload())
+            if (!bridgeOnly && !_moduleLoader.Reload())
                 Speech.Tts.Speak("Exa Access could not load its features module. The game will run without accessibility.");
 
 #if DEBUG
@@ -128,6 +133,7 @@ namespace Echopunks
         /// <summary>Called by the init postfix: the game is up, screens exist.</summary>
         internal static void OnGameInitialized()
         {
+            BridgeGameInitialized = true;
             if (_modHost != null) _modHost.GameInitialized = true;
         }
 
