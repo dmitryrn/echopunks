@@ -8,11 +8,12 @@ Other versions are unsupported.
 
 ## AI-assisted playthrough
 
-GPT-6.1 Terra Fast was used to solve the game's puzzles through this bridge,
-with a person selecting and opening each level. The bridge does not navigate
-through the whole game autonomously. Puzzle solutions were generally checked
-against all 100 tests; one earlier battle result (PB019) was not captured, so
-its outcome was not independently verified by the bridge.
+In an AI-assisted playthrough of the whole game, **GPT-6.1 Terra Fast solved
+the puzzles using this bridge**, with a person selecting and opening each
+level. The bridge does not navigate through the game autonomously. Puzzle
+solutions were generally checked against all 100 tests. One earlier battle
+result (PB019) was not captured, so its outcome was not independently
+verified by the bridge.
 
 **This fork changes Echopunks startup:** the original accessibility module is
 not loaded, even on ordinary launches. The bridge only starts when explicitly
